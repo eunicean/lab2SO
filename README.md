@@ -11,3 +11,9 @@ Eunice Mata - 21231
 #### Ejercicio 2
 - Programa de los incisos 1 al 5 - [e21.c](e21.c)
 - Programa de los incisos 6 al 12 - [e26.c](e26.c)
+
+#### Ejercicio 3
+
+#### Ejercicio 4
+
+#### Ejercicio 5
