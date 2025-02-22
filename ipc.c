@@ -1,38 +1,33 @@
 #include <stdio.h>
+#include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/wait.h>
 #include <fcntl.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <unistd.h>
 #include <errno.h>
+#include <sys/mman.h>
+#include <sys/wait.h>
+#include <sys/stat.h>
 
 #define SHM_SIZE 1024  
 
 int main(int argc, char** argv) {
-    if (argc != 3) {
-        printf("Uso: ./ipc <n> <x>\n");
-        return 1;
-    }
-
     int n = atoi(argv[1]);
     char x = argv[2][0];
 
     const char* shm_name = "/sahred_memory";
     int shm_fd = shm_open(shm_name, O_CREAT | O_EXCL | O_RDWR, 0666);
-
+    
+    printf("Im %c\n",x);
     if (shm_fd < 0) {
         if (errno == EEXIST) {
-            printf("%c: Memoria compartida ya existe.\n", x);
+            printf("%c: Memoria compartida ya creada.\n", x);
             shm_fd = shm_open(shm_name, O_RDWR, 0666);
-            if (shm_fd < 0) return 1;
         } else {
             printf("%c: Error en memoria compartida.\n", x);
             return 1;
         }
     } else {
-        printf("%c: Memoria compartida creada. FD: %d\n", x, shm_fd);
+        printf("%c: Memoria compartida creada. obj: %d\n", x, shm_fd);
     }
 
     if (ftruncate(shm_fd, SHM_SIZE) < 0) {
@@ -45,14 +40,16 @@ int main(int argc, char** argv) {
 
     printf("%c: Memoria mapeada en %p\n", x, (void*)ptr);
 
-    
+    // pipes: https://www.geeksforgeeks.org/c-program-demonstrate-fork-and-pipe/
+    // fd[0] -> for using read end
+    // fd[1] -> for using write end
     int pipefd[2];
     if (pipe(pipefd) < 0) return 1;
 
-    pid_t pid = fork();
-    if (pid < 0) return 1;
+    pid_t hijo = fork();
+    if (hijo < 0) return 1;
 
-    if (pid == 0) {  
+    if (hijo == 0) {  
         close(pipefd[1]);  
         char buffer;
         int index = 0;
@@ -63,7 +60,6 @@ int main(int argc, char** argv) {
         exit(0);
     } else {  
         close(pipefd[0]);
-        printf("%c: Soy el padre PID: %d\n", x, getpid());
 
         for (int i = 0; i < SHM_SIZE; i++) {
             if (i % n == 0) write(pipefd[1], &x, 1);
