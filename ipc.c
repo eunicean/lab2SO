@@ -1,88 +1,82 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <sys/wait.h>
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#include <sys/types.h>
 #include <errno.h>
-#include <string.h>
 
-#define SHM_NAME "/shared_memory_example"
-#define SHM_SIZE 1024 // Tamaño en bytes
+#define SHM_SIZE 1024  
 
-int main(int argc, char *argv[]) {
+int main(int argc, char** argv) {
     if (argc != 3) {
-        fprintf(stderr, "Uso: %s <número> <carácter>\n", argv[0]);
+        printf("Uso: ./ipc <n> <x>\n");
         return 1;
     }
 
     int n = atoi(argv[1]);
     char x = argv[2][0];
 
-    int shm_fd;
-    void *ptr;
-    int first_instance = 0; // 1 si este proceso crea la memoria
+    const char* shm_name = "/sahred_memory";
+    int shm_fd = shm_open(shm_name, O_CREAT | O_EXCL | O_RDWR, 0666);
 
-    // Intentar abrir memoria compartida
-    shm_fd = shm_open(SHM_NAME, O_CREAT | O_RDWR, 0666);
     if (shm_fd < 0) {
         if (errno == EEXIST) {
-            printf("%s: Memoria compartida ya creada\n", argv[2]);
-            shm_fd = shm_open(SHM_NAME, O_RDWR, 0666);
+            printf("%c: Memoria compartida ya existe.\n", x);
+            shm_fd = shm_open(shm_name, O_RDWR, 0666);
+            if (shm_fd < 0) return 1;
         } else {
-            perror("Error en shm_open");
-            exit(EXIT_FAILURE);
+            printf("%c: Error en memoria compartida.\n", x);
+            return 1;
         }
     } else {
-        first_instance = 1;
-        printf("%s: Creó memoria compartida\n", argv[2]);
-        ftruncate(shm_fd, SHM_SIZE); // Ajustar tamaño
+        printf("%c: Memoria compartida creada. FD: %d\n", x, shm_fd);
     }
 
-    // Mapear memoria compartida
-    ptr = mmap(0, SHM_SIZE, PROT_WRITE, MAP_SHARED, shm_fd, 0);
-    if (ptr == MAP_FAILED) {
-        perror("Error en mmap");
-        exit(EXIT_FAILURE);
+    if (ftruncate(shm_fd, SHM_SIZE) < 0) {
+        printf("%c: Error configurando tamaño de memoria.\n", x);
+        return 1;
     }
 
-    // Crear proceso hijo
+    char* ptr = mmap(0, SHM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+    if (ptr == MAP_FAILED) return 1;
+
+    printf("%c: Memoria mapeada en %p\n", x, (void*)ptr);
+
+    
+    int pipefd[2];
+    if (pipe(pipefd) < 0) return 1;
+
     pid_t pid = fork();
-    if (pid < 0) {
-        perror("Error en fork");
-        exit(EXIT_FAILURE);
-    }
+    if (pid < 0) return 1;
 
-    if (pid == 0) {
-        // Proceso hijo - Recibir datos y escribir en memoria compartida
-        char *shm_ptr = (char *)ptr;
-        for (int i = 0; i < SHM_SIZE; i++) {
-            while (shm_ptr[i] == 0) {
-                usleep(5000); // Esperar datos del padre
-            }
-            printf("%c", shm_ptr[i]);
+    if (pid == 0) {  
+        close(pipefd[1]);  
+        char buffer;
+        int index = 0;
+        while (read(pipefd[0], &buffer, 1) > 0) {
+            ptr[index++] = buffer;
         }
-        printf("\n");
-    } else {
-        // Proceso padre - Enviar datos al hijo
-        char *shm_ptr = (char *)ptr;
+        close(pipefd[0]);  
+        exit(0);
+    } else {  
+        close(pipefd[0]);
+        printf("%c: Soy el padre PID: %d\n", x, getpid());
+
         for (int i = 0; i < SHM_SIZE; i++) {
-            if (i % n == 0) {
-                shm_ptr[i] = x; // Escribir en memoria compartida
-            }
-            usleep(1000); // Pequeño retraso
+            if (i % n == 0) write(pipefd[1], &x, 1);
         }
 
-        // Esperar a que el hijo termine
+        close(pipefd[1]);
         wait(NULL);
-    }
 
-    // Liberar memoria compartida
-    munmap(ptr, SHM_SIZE);
-    close(shm_fd);
-    if (first_instance) {
-        shm_unlink(SHM_NAME);
+        printf("%c: Memoria compartida -> %s\n", x, ptr);
+
+        munmap(ptr, SHM_SIZE);
+        close(shm_fd);
+        shm_unlink(shm_name);
     }
 
     return 0;
