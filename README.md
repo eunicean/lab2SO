@@ -17,5 +17,9 @@ Eunice Mata - 21231
 - Programa modificado 2 del ej2 - [e372.c](e372.c)
 
 #### Ejercicio 4
+- Primer programa - [e41.c](e41.c)
+- Segundo programa - [e44.c](e44.c)
 
 #### Ejercicio 5
+- ipc - [ipc.c](ipc.c)
+- ipcRunner - [runner.c](runner.c)
